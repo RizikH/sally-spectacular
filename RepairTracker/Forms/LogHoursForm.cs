@@ -6,22 +6,23 @@ namespace RepairTracker.Forms;
 
 public class LogHoursForm : Form
 {
-    private readonly int _episodeId;
-    private readonly int _episodeNum;
+    private readonly int _seasonId;
+    private readonly int _episodeNumber;
     private TextBox txtHours = null!, txtNotes = null!;
     private Label lblError = null!;
 
-    public LogHoursForm(int episodeId, int episodeNum)
+    public LogHoursForm(int seasonId, int episodeNumber)
     {
-        _episodeId = episodeId;
-        _episodeNum = episodeNum;
+        _seasonId = seasonId;
+        _episodeNumber = episodeNumber;
         InitializeComponent();
+        PreFill();
     }
 
     private void InitializeComponent()
     {
         Text = "Log Hours";
-        Size = new Size(400, 320);
+        Size = new Size(400, 330);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -31,7 +32,7 @@ public class LogHoursForm : Form
         Font = new Font("Segoe UI", 9f);
 
         var pnlTitle = new Panel { Dock = DockStyle.Top, Height = 55, BackColor = AppColors.Card };
-        var lblTitle = AppColors.MakeLabel($"Log Hours — Episode {_episodeNum}", 13f, bold: true);
+        var lblTitle = AppColors.MakeLabel($"Log Hours — Episode {_episodeNumber}", 13f, bold: true);
         lblTitle.Location = new Point(16, 15);
         pnlTitle.Controls.Add(lblTitle);
 
@@ -39,19 +40,20 @@ public class LogHoursForm : Form
 
         var lblPrompt = new Label
         {
-            Text = "Episode added! Would you like to log your hours?",
+            Text = $"Item added to Episode {_episodeNumber}. Log or update hours for this episode:",
             Location = new Point(0, 14),
             AutoSize = false,
             Width = 340,
+            Height = 36,
             ForeColor = AppColors.TextSecond,
             Font = new Font("Segoe UI", 9.5f),
             BackColor = Color.Transparent
         };
 
-        var lblH = new Label { Text = "Hours Worked", Location = new Point(0, 52), AutoSize = true, ForeColor = AppColors.TextSecond, BackColor = Color.Transparent };
+        var lblH = new Label { Text = "Hours Worked", Location = new Point(0, 58), AutoSize = true, ForeColor = AppColors.TextSecond, BackColor = Color.Transparent };
         txtHours = new TextBox
         {
-            Location = new Point(0, 72),
+            Location = new Point(0, 78),
             Width = 150,
             BackColor = AppColors.Card,
             ForeColor = AppColors.TextPrimary,
@@ -59,10 +61,10 @@ public class LogHoursForm : Form
             Font = new Font("Segoe UI", 9.5f)
         };
 
-        var lblN = new Label { Text = "Notes (optional)", Location = new Point(0, 104), AutoSize = true, ForeColor = AppColors.TextSecond, BackColor = Color.Transparent };
+        var lblN = new Label { Text = "Notes (optional)", Location = new Point(0, 112), AutoSize = true, ForeColor = AppColors.TextSecond, BackColor = Color.Transparent };
         txtNotes = new TextBox
         {
-            Location = new Point(0, 124),
+            Location = new Point(0, 132),
             Width = 340,
             Height = 60,
             Multiline = true,
@@ -74,7 +76,7 @@ public class LogHoursForm : Form
 
         lblError = new Label
         {
-            Location = new Point(0, 192),
+            Location = new Point(0, 200),
             AutoSize = true,
             ForeColor = AppColors.RedFg,
             Font = new Font("Segoe UI", 8.5f),
@@ -85,11 +87,9 @@ public class LogHoursForm : Form
 
         var pnlBtn = new Panel { Dock = DockStyle.Bottom, Height = 54, BackColor = AppColors.Card };
         var btnSkip = AppColors.MakeBtn("Skip", AppColors.Card);
-        btnSkip.Width = 90;
-        btnSkip.Location = new Point(188, 10);
+        btnSkip.Width = 90; btnSkip.Location = new Point(188, 10);
         var btnSave = AppColors.MakeBtn("Save Hours", AppColors.Accent);
-        btnSave.Width = 100;
-        btnSave.Location = new Point(286, 10);
+        btnSave.Width = 100; btnSave.Location = new Point(286, 10);
 
         btnSkip.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
         btnSave.Click += BtnSave_Click;
@@ -101,6 +101,14 @@ public class LogHoursForm : Form
         Controls.Add(pnlTitle);
 
         AcceptButton = btnSave;
+    }
+
+    private void PreFill()
+    {
+        var existing = DbContext.GetHoursLog(_seasonId, _episodeNumber);
+        if (existing == null) return;
+        txtHours.Text = existing.HoursWorked.ToString("F1");
+        txtNotes.Text = existing.Notes ?? "";
     }
 
     private void BtnSave_Click(object? sender, EventArgs e)
@@ -116,7 +124,8 @@ public class LogHoursForm : Form
 
         DbContext.UpsertHoursLog(new HoursLog
         {
-            EpisodeId = _episodeId,
+            SeasonId = _seasonId,
+            EpisodeNumber = _episodeNumber,
             HoursWorked = hours,
             Notes = string.IsNullOrWhiteSpace(txtNotes.Text) ? null : txtNotes.Text.Trim()
         });

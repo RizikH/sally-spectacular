@@ -12,38 +12,108 @@ public static class DbContext
     {
         _dbPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "repair_tracker.db");
         using var conn = Connect();
-        using var cmd = conn.CreateCommand();
-        cmd.CommandText = @"
-            CREATE TABLE IF NOT EXISTS app_state (
-                key   TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS seasons (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                name       TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS episodes (
-                id                INTEGER PRIMARY KEY AUTOINCREMENT,
-                season_id         INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
-                episode_number    INTEGER NOT NULL,
-                item_description  TEXT NOT NULL DEFAULT '',
-                cost              REAL NOT NULL DEFAULT 0,
-                parts             REAL NOT NULL DEFAULT 0,
-                est_sell_price    REAL,
-                actual_sell_price REAL,
-                postage           REAL NOT NULL DEFAULT 0,
-                created_at        TEXT NOT NULL,
-                updated_at        TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS hours_log (
-                id           INTEGER PRIMARY KEY AUTOINCREMENT,
-                episode_id   INTEGER NOT NULL UNIQUE REFERENCES episodes(id) ON DELETE CASCADE,
-                hours_worked REAL NOT NULL DEFAULT 0,
-                notes        TEXT
-            );
-        ";
-        cmd.ExecuteNonQuery();
+
+        // Base tables
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS app_state (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS seasons (
+                    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name               TEXT NOT NULL UNIQUE,
+                    initial_investment REAL NOT NULL DEFAULT 0,
+                    created_at         TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS episodes (
+                    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                    season_id         INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+                    episode_number    INTEGER NOT NULL,
+                    item_description  TEXT NOT NULL DEFAULT '',
+                    cost              REAL NOT NULL DEFAULT 0,
+                    parts             REAL NOT NULL DEFAULT 0,
+                    est_sell_price    REAL,
+                    actual_sell_price REAL,
+                    postage           REAL NOT NULL DEFAULT 0,
+                    created_at        TEXT NOT NULL,
+                    updated_at        TEXT NOT NULL
+                );
+            ";
+            cmd.ExecuteNonQuery();
+        }
+
+        // Migrate seasons: add initial_investment if missing
+        try
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "ALTER TABLE seasons ADD COLUMN initial_investment REAL NOT NULL DEFAULT 0";
+            cmd.ExecuteNonQuery();
+        }
+        catch { /* column already exists */ }
+
+        // Migrate hours_log: old schema had episode_id FK; new has (season_id, episode_number)
+        MigrateHoursLog(conn);
+    }
+
+    private static void MigrateHoursLog(SqliteConnection conn)
+    {
+        // Check current hours_log schema
+        bool hasOldSchema = false;
+        bool tableExists = false;
+
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT name FROM sqlite_master WHERE type='table' AND name='hours_log'";
+            tableExists = cmd.ExecuteScalar() != null;
+        }
+
+        if (tableExists)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "PRAGMA table_info(hours_log)";
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                if (r.GetString(1) == "episode_id") { hasOldSchema = true; break; }
+            }
+        }
+
+        if (!tableExists || hasOldSchema)
+        {
+            // Create new table
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+                CREATE TABLE IF NOT EXISTS hours_log_new (
+                    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                    season_id      INTEGER NOT NULL REFERENCES seasons(id) ON DELETE CASCADE,
+                    episode_number INTEGER NOT NULL,
+                    hours_worked   REAL NOT NULL DEFAULT 0,
+                    notes          TEXT,
+                    UNIQUE(season_id, episode_number)
+                );
+            ";
+            cmd.ExecuteNonQuery();
+
+            if (hasOldSchema)
+            {
+                // Migrate existing data
+                using var migCmd = conn.CreateCommand();
+                migCmd.CommandText = @"
+                    INSERT OR IGNORE INTO hours_log_new (id, season_id, episode_number, hours_worked, notes)
+                    SELECT h.id, e.season_id, e.episode_number, h.hours_worked, h.notes
+                    FROM hours_log h
+                    JOIN episodes e ON e.id = h.episode_id;
+                    DROP TABLE hours_log;
+                ";
+                migCmd.ExecuteNonQuery();
+            }
+
+            using var renameCmd = conn.CreateCommand();
+            renameCmd.CommandText = "ALTER TABLE hours_log_new RENAME TO hours_log";
+            try { renameCmd.ExecuteNonQuery(); } catch { /* already renamed */ }
+        }
     }
 
     private static SqliteConnection Connect()
@@ -84,7 +154,7 @@ public static class DbContext
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT s.id, s.name, s.created_at, COUNT(e.id) AS cnt
+            SELECT s.id, s.name, s.initial_investment, s.created_at, COUNT(e.id) AS cnt
             FROM seasons s
             LEFT JOIN episodes e ON e.season_id = s.id
             GROUP BY s.id
@@ -93,20 +163,32 @@ public static class DbContext
         var list = new List<Season>();
         using var r = cmd.ExecuteReader();
         while (r.Read())
-            list.Add(new Season { Id = r.GetInt32(0), Name = r.GetString(1), CreatedAt = r.GetString(2), EpisodeCount = r.GetInt32(3) });
+            list.Add(new Season
+            {
+                Id = r.GetInt32(0),
+                Name = r.GetString(1),
+                InitialInvestment = r.GetDouble(2),
+                CreatedAt = r.GetString(3),
+                EpisodeCount = r.GetInt32(4)
+            });
         return list;
     }
 
-    public static Season CreateSeason(string name)
+    public static Season CreateSeason(string name, double initialInvestment = 0)
     {
         using var conn = Connect();
         string now = DateTime.UtcNow.ToString("o");
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "INSERT INTO seasons (name, created_at) VALUES ($name, $now); SELECT last_insert_rowid();";
+        cmd.CommandText = @"
+            INSERT INTO seasons (name, initial_investment, created_at)
+            VALUES ($name, $inv, $now);
+            SELECT last_insert_rowid();
+        ";
         cmd.Parameters.AddWithValue("$name", name);
+        cmd.Parameters.AddWithValue("$inv", initialInvestment);
         cmd.Parameters.AddWithValue("$now", now);
         int id = (int)(long)cmd.ExecuteScalar()!;
-        return new Season { Id = id, Name = name, CreatedAt = now };
+        return new Season { Id = id, Name = name, InitialInvestment = initialInvestment, CreatedAt = now };
     }
 
     // ---- Episodes ----
@@ -118,7 +200,7 @@ public static class DbContext
         cmd.CommandText = @"
             SELECT id, season_id, episode_number, item_description, cost, parts,
                    est_sell_price, actual_sell_price, postage, created_at, updated_at
-            FROM episodes WHERE season_id = $sid ORDER BY episode_number
+            FROM episodes WHERE season_id = $sid ORDER BY episode_number, id
         ";
         cmd.Parameters.AddWithValue("$sid", seasonId);
         var list = new List<Episode>();
@@ -168,6 +250,7 @@ public static class DbContext
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
             UPDATE episodes SET
+                episode_number    = $num,
                 item_description  = $desc,
                 cost              = $cost,
                 parts             = $parts,
@@ -177,6 +260,7 @@ public static class DbContext
                 updated_at        = $now
             WHERE id = $id
         ";
+        cmd.Parameters.AddWithValue("$num", ep.EpisodeNumber);
         cmd.Parameters.AddWithValue("$desc", ep.ItemDescription);
         cmd.Parameters.AddWithValue("$cost", ep.Cost);
         cmd.Parameters.AddWithValue("$parts", ep.Parts);
@@ -191,15 +275,19 @@ public static class DbContext
 
     // ---- Hours Log ----
 
-    public static HoursLog? GetHoursLog(int episodeId)
+    public static HoursLog? GetHoursLog(int seasonId, int episodeNumber)
     {
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
-        cmd.CommandText = "SELECT id, episode_id, hours_worked, notes FROM hours_log WHERE episode_id = $eid";
-        cmd.Parameters.AddWithValue("$eid", episodeId);
+        cmd.CommandText = @"
+            SELECT id, season_id, episode_number, hours_worked, notes
+            FROM hours_log WHERE season_id = $sid AND episode_number = $ep
+        ";
+        cmd.Parameters.AddWithValue("$sid", seasonId);
+        cmd.Parameters.AddWithValue("$ep", episodeNumber);
         using var r = cmd.ExecuteReader();
         if (!r.Read()) return null;
-        return new HoursLog { Id = r.GetInt32(0), EpisodeId = r.GetInt32(1), HoursWorked = r.GetDouble(2), Notes = r.IsDBNull(3) ? null : r.GetString(3) };
+        return ReadHoursLog(r);
     }
 
     public static List<HoursLog> GetHoursLogsForSeason(int seasonId)
@@ -207,17 +295,13 @@ public static class DbContext
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            SELECT h.id, h.episode_id, h.hours_worked, h.notes
-            FROM hours_log h
-            JOIN episodes e ON e.id = h.episode_id
-            WHERE e.season_id = $sid
-            ORDER BY e.episode_number
+            SELECT id, season_id, episode_number, hours_worked, notes
+            FROM hours_log WHERE season_id = $sid ORDER BY episode_number
         ";
         cmd.Parameters.AddWithValue("$sid", seasonId);
         var list = new List<HoursLog>();
         using var r = cmd.ExecuteReader();
-        while (r.Read())
-            list.Add(new HoursLog { Id = r.GetInt32(0), EpisodeId = r.GetInt32(1), HoursWorked = r.GetDouble(2), Notes = r.IsDBNull(3) ? null : r.GetString(3) });
+        while (r.Read()) list.Add(ReadHoursLog(r));
         return list;
     }
 
@@ -226,10 +310,14 @@ public static class DbContext
         using var conn = Connect();
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-            INSERT OR REPLACE INTO hours_log (episode_id, hours_worked, notes)
-            VALUES ($eid, $hours, $notes)
+            INSERT INTO hours_log (season_id, episode_number, hours_worked, notes)
+            VALUES ($sid, $ep, $hours, $notes)
+            ON CONFLICT(season_id, episode_number) DO UPDATE SET
+                hours_worked = excluded.hours_worked,
+                notes        = excluded.notes
         ";
-        cmd.Parameters.AddWithValue("$eid", log.EpisodeId);
+        cmd.Parameters.AddWithValue("$sid", log.SeasonId);
+        cmd.Parameters.AddWithValue("$ep", log.EpisodeNumber);
         cmd.Parameters.AddWithValue("$hours", log.HoursWorked);
         cmd.Parameters.AddWithValue("$notes", (object?)log.Notes ?? DBNull.Value);
         cmd.ExecuteNonQuery();
@@ -280,5 +368,14 @@ public static class DbContext
         Postage = r.GetDouble(8),
         CreatedAt = r.GetString(9),
         UpdatedAt = r.GetString(10)
+    };
+
+    private static HoursLog ReadHoursLog(SqliteDataReader r) => new HoursLog
+    {
+        Id = r.GetInt32(0),
+        SeasonId = r.GetInt32(1),
+        EpisodeNumber = r.GetInt32(2),
+        HoursWorked = r.GetDouble(3),
+        Notes = r.IsDBNull(4) ? null : r.GetString(4)
     };
 }

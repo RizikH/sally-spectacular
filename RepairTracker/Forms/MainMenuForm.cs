@@ -193,7 +193,7 @@ public class MainMenuForm : Form
 
         try
         {
-            DbContext.CreateSeason(dlg.SeasonName.Trim());
+            DbContext.CreateSeason(dlg.SeasonName.Trim(), dlg.InitialInvestment);
             LoadSeasons();
         }
         catch (Exception ex)
@@ -218,37 +218,53 @@ public class MainMenuForm : Form
 internal class NewSeasonDialog : Form
 {
     public string SeasonName => txtName.Text;
-    private TextBox txtName = null!;
+    public double InitialInvestment { get; private set; }
+
+    private TextBox txtName = null!, txtInvest = null!;
 
     public NewSeasonDialog()
     {
         Text = "New Season";
-        Size = new Size(360, 180);
+        Size = new Size(380, 240);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false; MinimizeBox = false;
         StartPosition = FormStartPosition.CenterParent;
         BackColor = AppColors.Surface;
         ForeColor = AppColors.TextPrimary;
 
-        var lbl = AppColors.MakeLabel("Season name:", 9.5f);
-        lbl.Location = new Point(20, 22);
-
+        var lblName = AppColors.MakeLabel("Season name:", 9.5f);
+        lblName.Location = new Point(20, 20);
         txtName = new TextBox
         {
-            Location = new Point(20, 44), Width = 300,
+            Location = new Point(20, 40), Width = 320,
             BackColor = AppColors.Card, ForeColor = AppColors.TextPrimary,
             BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 10f)
         };
 
+        var lblInvest = AppColors.MakeLabel("Initial investment (£, optional — for pre-bought stock):", 9.5f, color: AppColors.TextSecond);
+        lblInvest.Location = new Point(20, 76);
+        txtInvest = new TextBox
+        {
+            Location = new Point(20, 96), Width = 150,
+            BackColor = AppColors.Card, ForeColor = AppColors.TextPrimary,
+            BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 10f),
+            PlaceholderText = "0"
+        };
+
         var btnOk = AppColors.MakeBtn("Create", AppColors.Accent);
-        btnOk.Width = 90; btnOk.Height = 32; btnOk.Location = new Point(200, 90);
-        btnOk.Click += (_, _) => { DialogResult = DialogResult.OK; Close(); };
+        btnOk.Width = 90; btnOk.Height = 32; btnOk.Location = new Point(230, 152);
+        btnOk.Click += (_, _) =>
+        {
+            InitialInvestment = double.TryParse(txtInvest.Text.Replace("£", "").Trim(), out double v) && v >= 0 ? v : 0;
+            DialogResult = DialogResult.OK;
+            Close();
+        };
 
         var btnCancel = AppColors.MakeBtn("Cancel", AppColors.Card);
-        btnCancel.Width = 80; btnCancel.Height = 32; btnCancel.Location = new Point(108, 90);
+        btnCancel.Width = 80; btnCancel.Height = 32; btnCancel.Location = new Point(138, 152);
         btnCancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
 
-        Controls.AddRange(new Control[] { lbl, txtName, btnOk, btnCancel });
+        Controls.AddRange(new Control[] { lblName, txtName, lblInvest, txtInvest, btnOk, btnCancel });
         AcceptButton = btnOk; CancelButton = btnCancel;
     }
 }

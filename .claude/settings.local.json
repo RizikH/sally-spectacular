@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(ls -Path \"C:\\\\Users\\\\rizig\\\\OneDrive\\\\Desktop\\\\sally_spectacular_2.0\" -Force -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })",
+      "PowerShell(Get-ChildItem -Path \"C:\\\\Users\\\\rizig\\\\OneDrive\\\\Desktop\\\\sally_spectacular_2.0\" -Force -Recurse | ForEach-Object { @{ Path = $_.FullName; IsDir = $_.PSIsContainer; Name = $_.Name } } | ConvertTo-Json)",
+      "Bash(git --version)",
+      "Bash(gh --version)",
+      "Bash(dotnet --version)",
+      "Bash(git init *)",
+      "Bash(git checkout *)",
+      "Bash(dotnet new *)",
+      "Bash(dotnet sln *)",
+      "Bash(dotnet add *)"
+    ]
+  }
+}

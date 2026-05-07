@@ -8,23 +8,23 @@ public class AddEpisodeForm : Form
     public Episode? CreatedEpisode { get; private set; }
 
     private readonly int _seasonId;
-    private readonly int _nextNum;
+    private readonly int _suggestedNum;
 
-    private TextBox txtItem = null!, txtCost = null!, txtParts = null!,
+    private TextBox txtNum = null!, txtItem = null!, txtCost = null!, txtParts = null!,
                     txtPostage = null!, txtEstSell = null!, txtActSell = null!;
     private Label lblError = null!;
 
-    public AddEpisodeForm(int seasonId, int nextNum)
+    public AddEpisodeForm(int seasonId, int suggestedNum)
     {
         _seasonId = seasonId;
-        _nextNum = nextNum;
+        _suggestedNum = suggestedNum;
         InitializeComponent();
     }
 
     private void InitializeComponent()
     {
-        Text = "Add Episode";
-        Size = new Size(420, 480);
+        Text = "Add Item";
+        Size = new Size(420, 530);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         MinimizeBox = false;
@@ -34,20 +34,24 @@ public class AddEpisodeForm : Form
         Font = new Font("Segoe UI", 9f);
 
         var pnlTitle = new Panel { Dock = DockStyle.Top, Height = 55, BackColor = AppColors.Card };
-        var lblTitle = AppColors.MakeLabel($"Add Episode {_nextNum}", 13f, bold: true);
+        var lblTitle = AppColors.MakeLabel("Add Item to Season", 13f, bold: true);
         lblTitle.Location = new Point(16, 15);
         pnlTitle.Controls.Add(lblTitle);
 
         var pnlForm = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20, 14, 20, 0) };
 
-        (txtItem,    var r1) = MakeRow(pnlForm,  0, "Item Description *");
-        (txtCost,    var r2) = MakeRow(pnlForm,  1, "Cost (£)");
-        (txtParts,   var r3) = MakeRow(pnlForm,  2, "Parts (£)");
-        (txtPostage, var r4) = MakeRow(pnlForm,  3, "Postage (£)");
-        (txtEstSell, var r5) = MakeRow(pnlForm,  4, "Est. Sell Price (£, optional)");
-        (txtActSell, var r6) = MakeRow(pnlForm,  5, "Actual Sell Price (£, optional)");
+        AddRow(pnlForm, 0, "Episode # (suggested — editable)", out txtNum);
+        AddRow(pnlForm, 1, "Item Description *", out txtItem);
+        AddRow(pnlForm, 2, "Cost (£)", out txtCost);
+        AddRow(pnlForm, 3, "Parts (£)", out txtParts);
+        AddRow(pnlForm, 4, "Postage (£)", out txtPostage);
+        AddRow(pnlForm, 5, "Est. Sell Price (£, optional)", out txtEstSell);
+        AddRow(pnlForm, 6, "Actual Sell Price (£, optional)", out txtActSell);
 
-        txtCost.Text = "0"; txtParts.Text = "0"; txtPostage.Text = "0";
+        txtNum.Text = _suggestedNum.ToString();
+        txtCost.Text = "0";
+        txtParts.Text = "0";
+        txtPostage.Text = "0";
 
         lblError = new Label
         {
@@ -55,17 +59,15 @@ public class AddEpisodeForm : Form
             Font = new Font("Segoe UI", 8.5f),
             AutoSize = true,
             BackColor = Color.Transparent,
-            Location = new Point(20, 6 * 58 + 20)
+            Location = new Point(20, 7 * 58 + 16)
         };
         pnlForm.Controls.Add(lblError);
 
         var pnlBtn = new Panel { Dock = DockStyle.Bottom, Height = 54, BackColor = AppColors.Card };
         var btnCancel = AppColors.MakeBtn("Cancel", AppColors.Card);
-        btnCancel.Width = 90;
-        btnCancel.Location = new Point(200, 10);
+        btnCancel.Width = 90; btnCancel.Location = new Point(200, 10);
         var btnNext = AppColors.MakeBtn("  Next →", AppColors.Accent);
-        btnNext.Width = 100;
-        btnNext.Location = new Point(298, 10);
+        btnNext.Width = 100; btnNext.Location = new Point(298, 10);
 
         btnCancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
         btnNext.Click += BtnNext_Click;
@@ -80,10 +82,10 @@ public class AddEpisodeForm : Form
         CancelButton = btnCancel;
     }
 
-    private static (TextBox tb, Panel row) MakeRow(Panel parent, int index, string label)
+    private static void AddRow(Panel parent, int index, string label, out TextBox tb)
     {
         int y = index * 58 + 20;
-        var lbl = new Label
+        parent.Controls.Add(new Label
         {
             Text = label,
             Location = new Point(0, y),
@@ -91,8 +93,8 @@ public class AddEpisodeForm : Form
             ForeColor = AppColors.TextSecond,
             Font = new Font("Segoe UI", 8.5f),
             BackColor = Color.Transparent
-        };
-        var tb = new TextBox
+        });
+        tb = new TextBox
         {
             Location = new Point(0, y + 20),
             Width = 360,
@@ -101,14 +103,19 @@ public class AddEpisodeForm : Form
             BorderStyle = BorderStyle.FixedSingle,
             Font = new Font("Segoe UI", 9.5f)
         };
-        parent.Controls.Add(lbl);
         parent.Controls.Add(tb);
-        return (tb, parent);
     }
 
     private void BtnNext_Click(object? sender, EventArgs e)
     {
         lblError.Text = "";
+
+        if (!int.TryParse(txtNum.Text.Trim(), out int epNum) || epNum < 1)
+        {
+            lblError.Text = "Episode number must be a positive integer.";
+            txtNum.Focus();
+            return;
+        }
 
         if (string.IsNullOrWhiteSpace(txtItem.Text))
         {
@@ -117,30 +124,30 @@ public class AddEpisodeForm : Form
             return;
         }
 
-        if (!TryParseNum(txtCost.Text, out double cost) ||
-            !TryParseNum(txtParts.Text, out double parts) ||
-            !TryParseNum(txtPostage.Text, out double postage))
+        if (!TryNum(txtCost.Text, out double cost) ||
+            !TryNum(txtParts.Text, out double parts) ||
+            !TryNum(txtPostage.Text, out double postage))
         {
-            lblError.Text = "Cost, Parts and Postage must be valid numbers.";
+            lblError.Text = "Cost, Parts and Postage must be valid non-negative numbers.";
             return;
         }
 
         double? estSell = null, actSell = null;
         if (!string.IsNullOrWhiteSpace(txtEstSell.Text))
         {
-            if (!TryParseNum(txtEstSell.Text, out double v)) { lblError.Text = "Invalid Est. Sell Price."; return; }
+            if (!TryNum(txtEstSell.Text, out double v)) { lblError.Text = "Invalid Est. Sell Price."; return; }
             estSell = v;
         }
         if (!string.IsNullOrWhiteSpace(txtActSell.Text))
         {
-            if (!TryParseNum(txtActSell.Text, out double v)) { lblError.Text = "Invalid Actual Sell Price."; return; }
+            if (!TryNum(txtActSell.Text, out double v)) { lblError.Text = "Invalid Actual Sell Price."; return; }
             actSell = v;
         }
 
         CreatedEpisode = new Episode
         {
             SeasonId = _seasonId,
-            EpisodeNumber = _nextNum,
+            EpisodeNumber = epNum,
             ItemDescription = txtItem.Text.Trim(),
             Cost = cost,
             Parts = parts,
@@ -153,6 +160,6 @@ public class AddEpisodeForm : Form
         Close();
     }
 
-    private static bool TryParseNum(string s, out double v) =>
+    private static bool TryNum(string s, out double v) =>
         double.TryParse(s.Replace("£", "").Trim(), out v) && v >= 0;
 }

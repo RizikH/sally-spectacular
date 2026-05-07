@@ -42,8 +42,8 @@ public class SeasonViewForm : Form
         var lblSeason = AppColors.MakeLabel(_season.Name, 14f, bold: true);
         lblSeason.Location = new Point(122, 18);
 
-        var btnAdd = AppColors.MakeBtn("+ Add Episode", AppColors.Accent);
-        btnAdd.Width = 130; btnAdd.Height = 34;
+        var btnAdd = AppColors.MakeBtn("+ Add Item", AppColors.Accent);
+        btnAdd.Width = 110; btnAdd.Height = 34;
         btnAdd.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnAdd.Click += BtnAdd_Click;
 
@@ -54,13 +54,13 @@ public class SeasonViewForm : Form
 
         pnlHeader.SizeChanged += (_, _) =>
         {
-            btnAdd.Location = new Point(pnlHeader.Width - 252, 12);
-            btnHours.Location = new Point(pnlHeader.Width - 128, 12);
+            btnAdd.Location = new Point(pnlHeader.Width - 232, 12);
+            btnHours.Location = new Point(pnlHeader.Width - 122, 12);
         };
 
         pnlHeader.Controls.AddRange(new Control[] { btnBack, lblSeason, btnAdd, btnHours });
 
-        // Footer / summary
+        // Footer
         var pnlFooter = new Panel { Dock = DockStyle.Bottom, Height = 40, BackColor = AppColors.StatusBar };
         lblSummary = new Label
         {
@@ -77,7 +77,7 @@ public class SeasonViewForm : Form
         dgv = new DataGridView { Dock = DockStyle.Fill };
         AppColors.StyleGrid(dgv);
 
-        AddCol("Ep",             45, false, DataGridViewContentAlignment.MiddleCenter);
+        AddCol("Ep",             45, true,  DataGridViewContentAlignment.MiddleCenter);
         AddCol("Item",          185, true,  DataGridViewContentAlignment.MiddleLeft);
         AddCol("Cost",           75, true,  DataGridViewContentAlignment.MiddleRight);
         AddCol("Parts",          75, true,  DataGridViewContentAlignment.MiddleRight);
@@ -88,11 +88,11 @@ public class SeasonViewForm : Form
         AddCol("Postage",        75, true,  DataGridViewContentAlignment.MiddleRight);
         AddCol("Net Profit",     95, false, DataGridViewContentAlignment.MiddleRight);
 
-        // Make Item column expand to fill remaining width
         dgv.Columns[ColItem].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
 
         dgv.EditingControlShowing += Grid_EditingControlShowing;
         dgv.CellEndEdit           += Grid_CellEndEdit;
+        dgv.CellFormatting        += Grid_CellFormatting;
 
         Controls.Add(dgv);
         Controls.Add(pnlFooter);
@@ -136,50 +136,69 @@ public class SeasonViewForm : Form
         row.Cells[ColCost].Value  = Calculations.Gbp(ep.Cost);
         row.Cells[ColParts].Value = Calculations.Gbp(ep.Parts);
 
-        // eBay fee — show whichever sell price is available
         double? feeBase = ep.EstSellPrice ?? ep.ActualSellPrice;
         row.Cells[ColEbayFee].Value = feeBase.HasValue ? Calculations.Gbp(Calculations.EbayFee(feeBase.Value)) : "-";
 
-        row.Cells[ColEstSell].Value = ep.EstSellPrice.HasValue ? Calculations.Gbp(ep.EstSellPrice.Value) : "-";
+        row.Cells[ColEstSell].Value  = ep.EstSellPrice.HasValue    ? Calculations.Gbp(ep.EstSellPrice.Value)    : "-";
+        row.Cells[ColActSell].Value  = ep.ActualSellPrice.HasValue ? Calculations.Gbp(ep.ActualSellPrice.Value) : "-";
+        row.Cells[ColPostage].Value  = Calculations.Gbp(ep.Postage);
 
-        if (ep.EstSellPrice.HasValue)
+        // Calculated profit values — CellFormatting applies the colour
+        row.Cells[ColEstProfit].Value = ep.EstSellPrice.HasValue
+            ? Calculations.Gbp(Calculations.EstimatedProfit(ep.Cost, ep.Parts, ep.EstSellPrice.Value))
+            : "-";
+
+        row.Cells[ColNetProfit].Value = ep.ActualSellPrice.HasValue
+            ? Calculations.Gbp(Calculations.NetProfit(ep.Cost, ep.Parts, ep.ActualSellPrice.Value, ep.Postage))
+            : "-";
+    }
+
+    // CellFormatting drives all green/red colouring — fired every paint cycle, guaranteed visible
+    private void Grid_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
+    {
+        if (e.RowIndex < 0 || e.RowIndex >= _episodes.Count) return;
+        var ep = _episodes[e.RowIndex];
+
+        if (e.ColumnIndex == ColEstProfit && ep.EstSellPrice.HasValue)
         {
-            double ep_ = Calculations.EstimatedProfit(ep.Cost, ep.Parts, ep.EstSellPrice.Value);
-            row.Cells[ColEstProfit].Value = Calculations.Gbp(ep_);
-            CellFormatter.ApplyProfit(row.Cells[ColEstProfit], ep_, triggered: true);
+            double v = Calculations.EstimatedProfit(ep.Cost, ep.Parts, ep.EstSellPrice.Value);
+            ApplyProfitStyle(e.CellStyle, v);
+        }
+        else if (e.ColumnIndex == ColNetProfit && ep.ActualSellPrice.HasValue)
+        {
+            double v = Calculations.NetProfit(ep.Cost, ep.Parts, ep.ActualSellPrice.Value, ep.Postage);
+            ApplyProfitStyle(e.CellStyle, v);
+        }
+    }
+
+    private static void ApplyProfitStyle(DataGridViewCellStyle style, double value)
+    {
+        if (value < 0)
+        {
+            style.BackColor = AppColors.RedBg;
+            style.ForeColor = AppColors.RedFg;
+            style.SelectionBackColor = Color.FromArgb(130, 40, 40);
+            style.SelectionForeColor = AppColors.RedFg;
         }
         else
         {
-            row.Cells[ColEstProfit].Value = "-";
-            CellFormatter.Reset(row.Cells[ColEstProfit]);
-        }
-
-        row.Cells[ColActSell].Value = ep.ActualSellPrice.HasValue ? Calculations.Gbp(ep.ActualSellPrice.Value) : "-";
-        row.Cells[ColPostage].Value = Calculations.Gbp(ep.Postage);
-
-        if (ep.ActualSellPrice.HasValue)
-        {
-            double np = Calculations.NetProfit(ep.Cost, ep.Parts, ep.ActualSellPrice.Value, ep.Postage);
-            row.Cells[ColNetProfit].Value = Calculations.Gbp(np);
-            CellFormatter.ApplyProfit(row.Cells[ColNetProfit], np, triggered: true);
-        }
-        else
-        {
-            row.Cells[ColNetProfit].Value = "-";
-            CellFormatter.Reset(row.Cells[ColNetProfit]);
+            style.BackColor = AppColors.GreenBg;
+            style.ForeColor = AppColors.GreenFg;
+            style.SelectionBackColor = Color.FromArgb(30, 100, 50);
+            style.SelectionForeColor = AppColors.GreenFg;
         }
     }
 
     private void UpdateSummary()
     {
         int count = _episodes.Count;
-        double totalCost = _episodes.Sum(e => e.Cost + e.Parts);
+        double totalInvest = _episodes.Sum(e => e.Cost + e.Parts);
         var withNet = _episodes.Where(e => e.ActualSellPrice.HasValue).ToList();
         double? totalNet = withNet.Count > 0
             ? withNet.Sum(e => Calculations.NetProfit(e.Cost, e.Parts, e.ActualSellPrice!.Value, e.Postage))
             : null;
 
-        lblSummary.Text = $"  Episodes: {count}   |   Total Investment: {Calculations.Gbp(totalCost)}" +
+        lblSummary.Text = $"  Items: {count}   |   Total Investment: {Calculations.Gbp(totalInvest)}" +
                           $"   |   Total Net Profit: {Calculations.Gbp(totalNet)}";
     }
 
@@ -199,13 +218,14 @@ public class SeasonViewForm : Form
 
             string raw = col switch
             {
-                ColCost     => ep.Cost.ToString("F2"),
-                ColParts    => ep.Parts.ToString("F2"),
-                ColEstSell  => ep.EstSellPrice.HasValue ? ep.EstSellPrice.Value.ToString("F2") : "",
-                ColActSell  => ep.ActualSellPrice.HasValue ? ep.ActualSellPrice.Value.ToString("F2") : "",
-                ColPostage  => ep.Postage.ToString("F2"),
-                ColItem     => ep.ItemDescription,
-                _           => tb.Text
+                ColEp      => ep.EpisodeNumber.ToString(),
+                ColCost    => ep.Cost.ToString("F2"),
+                ColParts   => ep.Parts.ToString("F2"),
+                ColEstSell => ep.EstSellPrice.HasValue ? ep.EstSellPrice.Value.ToString("F2") : "",
+                ColActSell => ep.ActualSellPrice.HasValue ? ep.ActualSellPrice.Value.ToString("F2") : "",
+                ColPostage => ep.Postage.ToString("F2"),
+                ColItem    => ep.ItemDescription,
+                _          => tb.Text
             };
             tb.Text = raw;
             tb.SelectAll();
@@ -220,6 +240,9 @@ public class SeasonViewForm : Form
 
         switch (e.ColumnIndex)
         {
+            case ColEp:
+                if (int.TryParse(raw, out int epNum) && epNum > 0) ep.EpisodeNumber = epNum;
+                break;
             case ColItem:
                 if (!string.IsNullOrWhiteSpace(raw)) ep.ItemDescription = raw;
                 break;
@@ -256,8 +279,8 @@ public class SeasonViewForm : Form
 
     private void BtnAdd_Click(object? sender, EventArgs e)
     {
-        int next = DbContext.GetNextEpisodeNumber(_season.Id);
-        using var dlg = new AddEpisodeForm(_season.Id, next);
+        int suggested = DbContext.GetNextEpisodeNumber(_season.Id);
+        using var dlg = new AddEpisodeForm(_season.Id, suggested);
         if (dlg.ShowDialog(this) != DialogResult.OK || dlg.CreatedEpisode == null) return;
 
         var ep = DbContext.CreateEpisode(dlg.CreatedEpisode);
@@ -265,11 +288,9 @@ public class SeasonViewForm : Form
         dgv.Rows.Add();
         RefreshRow(dgv.Rows.Count - 1);
         UpdateSummary();
-
-        // Scroll to new row
         dgv.FirstDisplayedScrollingRowIndex = dgv.Rows.Count - 1;
 
-        using var hoursForm = new LogHoursForm(ep.Id, ep.EpisodeNumber);
+        using var hoursForm = new LogHoursForm(_season.Id, ep.EpisodeNumber);
         hoursForm.ShowDialog(this);
     }
 

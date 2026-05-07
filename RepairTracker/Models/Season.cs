@@ -6,4 +6,5 @@ public class Season
     public string Name { get; set; } = "";
     public string CreatedAt { get; set; } = "";
     public int EpisodeCount { get; set; }
+    public double InitialInvestment { get; set; }
 }
