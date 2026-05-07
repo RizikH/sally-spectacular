@@ -4,22 +4,21 @@ using RepairTracker.Models;
 
 namespace RepairTracker.Forms;
 
-public class MainMenuForm : Form
+public class MainMenuControl : UserControl
 {
+    private readonly AppForm _app;
     private FlowLayoutPanel pnlCards = null!;
     private Button btnDeleted = null!;
 
-    public MainMenuForm()
+    public MainMenuControl(AppForm app)
     {
+        _app = app;
+        _app.Text = "Repair Tracker";
         InitializeComponent();
     }
 
     private void InitializeComponent()
     {
-        Text = "Repair Tracker";
-        Size = new Size(960, 680);
-        MinimumSize = new Size(600, 400);
-        StartPosition = FormStartPosition.CenterScreen;
         BackColor = AppColors.Background;
         ForeColor = AppColors.TextPrimary;
         Font = new Font("Segoe UI", 9f);
@@ -92,26 +91,6 @@ public class MainMenuForm : Form
     protected override void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-
-        // Auto-navigate to last season if one exists
-        string? lastId = DbContext.GetAppState("last_season_id");
-        if (lastId != null && int.TryParse(lastId, out int sid))
-        {
-            var seasons = DbContext.GetAllSeasons();
-            var season = seasons.FirstOrDefault(s => s.Id == sid);
-            if (season != null)
-            {
-                OpenSeason(season);
-                return;
-            }
-        }
-
-        RefreshAndShow();
-    }
-
-    public void RefreshAndShow()
-    {
-        Show();
         LoadSeasons();
     }
 
@@ -123,7 +102,6 @@ public class MainMenuForm : Form
         pnlCards.Controls.Clear();
         var seasons = DbContext.GetAllSeasons();
 
-        // Update "Recently Deleted" badge
         int deletedCount = DbContext.GetDeletedSeasons().Count;
         btnDeleted.Text = deletedCount > 0
             ? $"🗑 Recently Deleted ({deletedCount})"
@@ -156,7 +134,7 @@ public class MainMenuForm : Form
 
         var lblName = AppColors.MakeLabel(season.Name, 12f, bold: true);
         lblName.Location = new Point(14, 14);
-        lblName.MaximumSize = new Size(162, 0);
+        lblName.MaximumSize = new Size(142, 0);
 
         var lblCount = AppColors.MakeLabel(
             $"{season.EpisodeCount} episode{(season.EpisodeCount == 1 ? "" : "s")}",
@@ -178,11 +156,13 @@ public class MainMenuForm : Form
         {
             Text = "×",
             Size = new Size(24, 24),
-            Location = new Point(card.Width - 28, 4),
+            Location = new Point(card.Width - 30, 8),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.Transparent,
             ForeColor = AppColors.TextMuted,
-            Font = new Font("Segoe UI", 11f, FontStyle.Bold),
+            Font = new Font("Segoe UI", 13f, FontStyle.Regular),
+            TextAlign = ContentAlignment.MiddleCenter,
+            Padding = new Padding(0, 0, 0, 1),
             Cursor = Cursors.Hand,
             TabStop = false
         };
@@ -199,7 +179,7 @@ public class MainMenuForm : Form
             e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
         };
 
-        // Hover (don't override if hovering the delete button)
+        // Hover
         card.MouseEnter += (_, _) => { card.BackColor = AppColors.CardHover; card.Invalidate(); };
         card.MouseLeave += (_, _) => { card.BackColor = AppColors.Card; card.Invalidate(); };
 
@@ -210,19 +190,13 @@ public class MainMenuForm : Form
     private void OpenSeason(Season season)
     {
         DbContext.SetAppState("last_season_id", season.Id.ToString());
-        var form = new SeasonViewForm(season);
-        form.FormClosed += (_, _) => RefreshAndShow();
-        Hide();
-        form.Show();
+        _app.Navigate(new SeasonViewControl(_app, season));
     }
 
     private void OpenHours(Season season)
     {
         DbContext.SetAppState("last_season_id", season.Id.ToString());
-        var form = new HoursViewForm(season);
-        form.FormClosed += (_, _) => RefreshAndShow();
-        Hide();
-        form.Show();
+        _app.Navigate(new HoursViewControl(_app, season));
     }
 
     private void DeleteSeason(Season season)

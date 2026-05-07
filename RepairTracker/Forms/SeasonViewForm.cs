@@ -5,29 +5,29 @@ using RepairTracker.Models;
 
 namespace RepairTracker.Forms;
 
-public class SeasonViewForm : Form
+public class SeasonViewControl : UserControl
 {
     private const int ColEp = 0, ColItem = 1, ColCost = 2, ColParts = 3, ColEbayFee = 4,
-                      ColEstSell = 5, ColEstProfit = 6, ColActSell = 7, ColPostage = 8, ColNetProfit = 9;
+                      ColEstSell = 5, ColEstProfit = 6, ColActSell = 7, ColPostage = 8,
+                      ColNetProfit = 9, ColDelete = 10;
 
+    private readonly AppForm _app;
     private readonly Season _season;
     private List<Episode> _episodes = new();
     private DataGridView dgv = null!;
     private Label lblSummary = null!;
 
-    public SeasonViewForm(Season season)
+    public SeasonViewControl(AppForm app, Season season)
     {
+        _app = app;
         _season = season;
+        _app.Text = $"Repair Tracker — {_season.Name}";
         InitializeComponent();
         LoadEpisodes();
     }
 
     private void InitializeComponent()
     {
-        Text = $"Repair Tracker — {_season.Name}";
-        Size = new Size(1220, 680);
-        MinimumSize = new Size(900, 500);
-        StartPosition = FormStartPosition.CenterScreen;
         BackColor = AppColors.Background;
         ForeColor = AppColors.TextPrimary;
         Font = new Font("Segoe UI", 9f);
@@ -77,29 +77,46 @@ public class SeasonViewForm : Form
         dgv = new DataGridView { Dock = DockStyle.Fill };
         AppColors.StyleGrid(dgv);
 
-        AddCol("Ep",             45, true,  DataGridViewContentAlignment.MiddleCenter);
-        AddCol("Item",          185, true,  DataGridViewContentAlignment.MiddleLeft);
-        AddCol("Cost",           75, true,  DataGridViewContentAlignment.MiddleRight);
-        AddCol("Parts",          75, true,  DataGridViewContentAlignment.MiddleRight);
-        AddCol("eBay Fee (9%)",  90, false, DataGridViewContentAlignment.MiddleRight);
-        AddCol("Est. Sell",      90, true,  DataGridViewContentAlignment.MiddleRight);
-        AddCol("Est. Profit",    95, false, DataGridViewContentAlignment.MiddleRight);
-        AddCol("Actual Sell",    95, true,  DataGridViewContentAlignment.MiddleRight);
-        AddCol("Postage",        75, true,  DataGridViewContentAlignment.MiddleRight);
-        AddCol("Net Profit",     95, false, DataGridViewContentAlignment.MiddleRight);
+        AddTextCol("Ep",             45, true,  DataGridViewContentAlignment.MiddleCenter);
+        AddTextCol("Item",          185, true,  DataGridViewContentAlignment.MiddleLeft);
+        AddTextCol("Cost",           75, true,  DataGridViewContentAlignment.MiddleRight);
+        AddTextCol("Parts",          75, true,  DataGridViewContentAlignment.MiddleRight);
+        AddTextCol("eBay Fee (9%)",  90, false, DataGridViewContentAlignment.MiddleRight);
+        AddTextCol("Est. Sell",      90, true,  DataGridViewContentAlignment.MiddleRight);
+        AddTextCol("Est. Profit",    95, false, DataGridViewContentAlignment.MiddleRight);
+        AddTextCol("Actual Sell",    95, true,  DataGridViewContentAlignment.MiddleRight);
+        AddTextCol("Postage",        75, true,  DataGridViewContentAlignment.MiddleRight);
+        AddTextCol("Net Profit",     95, false, DataGridViewContentAlignment.MiddleRight);
 
         dgv.Columns[ColItem].AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill;
+
+        // Delete column
+        var colDel = new DataGridViewButtonColumn
+        {
+            HeaderText = "",
+            Text = "×",
+            UseColumnTextForButtonValue = true,
+            Width = 36,
+            FlatStyle = FlatStyle.Flat,
+            SortMode = DataGridViewColumnSortMode.NotSortable
+        };
+        colDel.DefaultCellStyle.BackColor = Color.FromArgb(70, 25, 25);
+        colDel.DefaultCellStyle.ForeColor = AppColors.RedFg;
+        colDel.DefaultCellStyle.SelectionBackColor = Color.FromArgb(100, 30, 30);
+        colDel.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
+        dgv.Columns.Add(colDel);
 
         dgv.EditingControlShowing += Grid_EditingControlShowing;
         dgv.CellEndEdit           += Grid_CellEndEdit;
         dgv.CellFormatting        += Grid_CellFormatting;
+        dgv.CellContentClick      += Grid_CellContentClick;
 
         Controls.Add(dgv);
         Controls.Add(pnlFooter);
         Controls.Add(pnlHeader);
     }
 
-    private void AddCol(string header, int width, bool editable, DataGridViewContentAlignment align)
+    private void AddTextCol(string header, int width, bool editable, DataGridViewContentAlignment align)
     {
         var col = new DataGridViewTextBoxColumn
         {
@@ -143,7 +160,6 @@ public class SeasonViewForm : Form
         row.Cells[ColActSell].Value  = ep.ActualSellPrice.HasValue ? Calculations.Gbp(ep.ActualSellPrice.Value) : "-";
         row.Cells[ColPostage].Value  = Calculations.Gbp(ep.Postage);
 
-        // Calculated profit values — CellFormatting applies the colour
         row.Cells[ColEstProfit].Value = ep.EstSellPrice.HasValue
             ? Calculations.Gbp(Calculations.EstimatedProfit(ep.Cost, ep.Parts, ep.EstSellPrice.Value))
             : "-";
@@ -153,7 +169,6 @@ public class SeasonViewForm : Form
             : "-";
     }
 
-    // CellFormatting drives all green/red colouring — fired every paint cycle, guaranteed visible
     private void Grid_CellFormatting(object? sender, DataGridViewCellFormattingEventArgs e)
     {
         if (e.RowIndex < 0 || e.RowIndex >= _episodes.Count) return;
@@ -261,10 +276,33 @@ public class SeasonViewForm : Form
             case ColPostage:
                 if (TryNum(raw, out double post)) ep.Postage = post;
                 break;
+            default:
+                return;
         }
 
         DbContext.UpdateEpisode(ep);
         RefreshRow(e.RowIndex);
+        UpdateSummary();
+    }
+
+    private void Grid_CellContentClick(object? sender, DataGridViewCellEventArgs e)
+    {
+        if (e.RowIndex < 0 || e.RowIndex >= _episodes.Count) return;
+        if (e.ColumnIndex != ColDelete) return;
+
+        var ep = _episodes[e.RowIndex];
+        var result = MessageBox.Show(
+            $"Delete \"{ep.ItemDescription}\"?\n\nThis cannot be undone.",
+            "Delete Item",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2);
+
+        if (result != DialogResult.Yes) return;
+
+        DbContext.DeleteEpisode(ep.Id);
+        _episodes.RemoveAt(e.RowIndex);
+        dgv.Rows.RemoveAt(e.RowIndex);
         UpdateSummary();
     }
 
@@ -273,8 +311,7 @@ public class SeasonViewForm : Form
 
     private void BtnBack_Click(object? sender, EventArgs e)
     {
-        DbContext.SetAppState("last_season_id", _season.Id.ToString());
-        Close();
+        _app.Navigate(new MainMenuControl(_app));
     }
 
     private void BtnAdd_Click(object? sender, EventArgs e)
@@ -297,9 +334,6 @@ public class SeasonViewForm : Form
     private void BtnHours_Click(object? sender, EventArgs e)
     {
         DbContext.SetAppState("last_season_id", _season.Id.ToString());
-        var form = new HoursViewForm(_season);
-        form.FormClosed += (_, _) => Show();
-        Hide();
-        form.Show();
+        _app.Navigate(new HoursViewControl(_app, _season));
     }
 }

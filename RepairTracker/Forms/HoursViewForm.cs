@@ -5,34 +5,32 @@ using RepairTracker.Models;
 
 namespace RepairTracker.Forms;
 
-public class HoursViewForm : Form
+public class HoursViewControl : UserControl
 {
     private const int ColEp = 0, ColItems = 1, ColEstProfit = 2, ColActProfit = 3,
                       ColHours = 4, ColHourly = 5, ColNotes = 6;
 
+    private readonly AppForm _app;
     private readonly Season _season;
 
-    // episode_number → list of items in that episode
     private Dictionary<int, List<Episode>> _grouped = new();
-    private List<int> _epNums = new();                       // ordered unique episode numbers
-    private Dictionary<int, HoursLog> _hoursMap = new();    // episode_number → log
+    private List<int> _epNums = new();
+    private Dictionary<int, HoursLog> _hoursMap = new();
 
     private DataGridView dgv = null!;
     private Panel pnlSummary = null!;
 
-    public HoursViewForm(Season season)
+    public HoursViewControl(AppForm app, Season season)
     {
+        _app = app;
         _season = season;
+        _app.Text = $"Repair Tracker — {_season.Name} — Hours Log";
         InitializeComponent();
         LoadData();
     }
 
     private void InitializeComponent()
     {
-        Text = $"Hours Log — {_season.Name}";
-        Size = new Size(1060, 620);
-        MinimumSize = new Size(800, 450);
-        StartPosition = FormStartPosition.CenterScreen;
         BackColor = AppColors.Background;
         ForeColor = AppColors.TextPrimary;
         Font = new Font("Segoe UI", 9f);
@@ -41,7 +39,7 @@ public class HoursViewForm : Form
         var pnlHeader = new Panel { Dock = DockStyle.Top, Height = 58, BackColor = AppColors.Surface };
         var btnBack = AppColors.MakeBtn("← Season", AppColors.Card);
         btnBack.Width = 100; btnBack.Height = 34; btnBack.Location = new Point(10, 12);
-        btnBack.Click += (_, _) => Close();
+        btnBack.Click += (_, _) => _app.Navigate(new SeasonViewControl(_app, _season));
         var lblTitle = AppColors.MakeLabel($"{_season.Name} — Hours Log", 13f, bold: true);
         lblTitle.Location = new Point(122, 18);
         pnlHeader.Controls.AddRange(new Control[] { btnBack, lblTitle });
@@ -125,26 +123,22 @@ public class HoursViewForm : Form
         row.Cells[ColEp].Value    = epNum;
         row.Cells[ColItems].Value = items.Count;
 
-        // Est. Profit — sum of all items in this episode that have est_sell_price
         var withEst = items.Where(e => e.EstSellPrice.HasValue).ToList();
         double? estP = withEst.Count > 0
             ? withEst.Sum(e => Calculations.EstimatedProfit(e.Cost, e.Parts, e.EstSellPrice!.Value))
             : null;
         row.Cells[ColEstProfit].Value = Calculations.Gbp(estP);
-        row.Tag = null; // clear tag so CellFormatting recalculates from episode data
+        row.Tag = null;
 
-        // Actual Profit — sum of all items in this episode that have actual_sell_price
         var withAct = items.Where(e => e.ActualSellPrice.HasValue).ToList();
         double? actP = withAct.Count > 0
             ? withAct.Sum(e => Calculations.NetProfit(e.Cost, e.Parts, e.ActualSellPrice!.Value, e.Postage))
             : null;
         row.Cells[ColActProfit].Value = Calculations.Gbp(actP);
 
-        // Hours
         double hours = log?.HoursWorked ?? 0;
         row.Cells[ColHours].Value = hours > 0 ? hours.ToString("F1") : "";
 
-        // Hourly profit — actual profit / hours for this episode
         double? hourly = (actP.HasValue && hours > 0)
             ? Calculations.HourlyProfit(actP.Value, hours)
             : null;
@@ -152,7 +146,6 @@ public class HoursViewForm : Form
 
         row.Cells[ColNotes].Value = log?.Notes ?? "";
 
-        // Store computed values in Tag for CellFormatting
         row.Tag = (estP, actP, hourly);
     }
 

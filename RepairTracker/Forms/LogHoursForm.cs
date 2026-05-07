@@ -36,7 +36,7 @@ public class LogHoursForm : Form
         lblTitle.Location = new Point(16, 15);
         pnlTitle.Controls.Add(lblTitle);
 
-        var pnlBody = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20, 14, 20, 0) };
+        var pnlBody = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20, 14, 20, 0), AutoScroll = true };
 
         var lblPrompt = new Label
         {

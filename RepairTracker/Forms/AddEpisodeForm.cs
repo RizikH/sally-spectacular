@@ -38,7 +38,7 @@ public class AddEpisodeForm : Form
         lblTitle.Location = new Point(16, 15);
         pnlTitle.Controls.Add(lblTitle);
 
-        var pnlForm = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20, 14, 20, 0) };
+        var pnlForm = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20, 14, 20, 0), AutoScroll = true };
 
         AddRow(pnlForm, 0, "Episode # (suggested — editable)", out txtNum);
         AddRow(pnlForm, 1, "Item Description *", out txtItem);

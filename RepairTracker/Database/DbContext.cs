@@ -299,6 +299,15 @@ public static class DbContext
         return ep;
     }
 
+    public static void DeleteEpisode(int id)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM episodes WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
+    }
+
     public static void UpdateEpisode(Episode ep)
     {
         using var conn = Connect();
