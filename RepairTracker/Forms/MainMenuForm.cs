@@ -24,11 +24,11 @@ public class MainMenuControl : UserControl
         Font = new Font("Segoe UI", 9f);
 
         // Header
-        var pnlHeader = new Panel { Dock = DockStyle.Top, Height = 80, BackColor = AppColors.Surface };
+        var pnlHeader = new Panel { Dock = DockStyle.Top, Height = 90, BackColor = AppColors.Surface };
         var lblTitle = AppColors.MakeLabel("REPAIR TRACKER", 18f, bold: true, color: AppColors.TextPrimary);
         lblTitle.Location = new Point(24, 16);
         var lblSub = AppColors.MakeLabel("Track your flips, season by season.", 9.5f, color: AppColors.TextSecond);
-        lblSub.Location = new Point(26, 48);
+        lblSub.Location = new Point(26, 58);
         pnlHeader.Controls.AddRange(new Control[] { lblTitle, lblSub });
 
         // Toolbar
@@ -42,7 +42,7 @@ public class MainMenuControl : UserControl
         btnAllProfit.FlatAppearance.BorderSize = 1;
         btnAllProfit.FlatAppearance.BorderColor = AppColors.Border;
         btnAllProfit.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-        btnAllProfit.Click += (_, _) => new ProfitSummaryForm().ShowDialog(this);
+        btnAllProfit.Click += (_, _) => new ProfitSummaryForm().ShowDialog(FindForm());
 
         var btnSeasonProfit = AppColors.MakeBtn("Season Profit...", AppColors.Card);
         btnSeasonProfit.Width = 130; btnSeasonProfit.Height = 34;
@@ -59,7 +59,7 @@ public class MainMenuControl : UserControl
         btnDeleted.Click += (_, _) =>
         {
             using var dlg = new DeletedSeasonsForm();
-            dlg.ShowDialog(this);
+            dlg.ShowDialog(FindForm());
             LoadSeasons();
         };
 
@@ -134,7 +134,7 @@ public class MainMenuControl : UserControl
 
         var lblName = AppColors.MakeLabel(season.Name, 12f, bold: true);
         lblName.Location = new Point(14, 14);
-        lblName.MaximumSize = new Size(142, 0);
+        lblName.MaximumSize = new Size(118, 0);
 
         var lblCount = AppColors.MakeLabel(
             $"{season.EpisodeCount} episode{(season.EpisodeCount == 1 ? "" : "s")}",
@@ -155,14 +155,14 @@ public class MainMenuControl : UserControl
         var btnDelete = new Button
         {
             Text = "×",
-            Size = new Size(24, 24),
-            Location = new Point(card.Width - 30, 8),
+            Size = new Size(48, 48),
+            Location = new Point(card.Width - 52, 4),
             FlatStyle = FlatStyle.Flat,
             BackColor = Color.Transparent,
             ForeColor = AppColors.TextMuted,
-            Font = new Font("Segoe UI", 13f, FontStyle.Regular),
+            Font = new Font("Segoe UI", 11f, FontStyle.Bold),
             TextAlign = ContentAlignment.MiddleCenter,
-            Padding = new Padding(0, 0, 0, 1),
+            Padding = Padding.Empty,
             Cursor = Cursors.Hand,
             TabStop = false
         };
@@ -217,11 +217,22 @@ public class MainMenuControl : UserControl
     private void BtnNew_Click(object? sender, EventArgs e)
     {
         using var dlg = new NewSeasonDialog();
-        if (dlg.ShowDialog(this) != DialogResult.OK || string.IsNullOrWhiteSpace(dlg.SeasonName)) return;
+        if (dlg.ShowDialog(FindForm()) != DialogResult.OK) return;
+
+        string name = dlg.SeasonName.Trim();
+
+        var active = DbContext.GetAllSeasons();
+        if (active.Any(s => s.Name.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            MessageBox.Show(
+                $"A season named \"{name}\" already exists.\nDelete or rename it before creating another with the same name.",
+                "Season Already Exists", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
 
         try
         {
-            DbContext.CreateSeason(dlg.SeasonName.Trim(), dlg.InitialInvestment);
+            DbContext.CreateSeason(name, dlg.InitialInvestment);
             LoadSeasons();
         }
         catch (Exception ex)
@@ -236,8 +247,8 @@ public class MainMenuControl : UserControl
         if (seasons.Count == 0) { MessageBox.Show("No seasons yet.", "Info"); return; }
 
         using var picker = new SeasonPickerDialog(seasons);
-        if (picker.ShowDialog(this) != DialogResult.OK || picker.SelectedSeason == null) return;
-        new ProfitSummaryForm(picker.SelectedSeason).ShowDialog(this);
+        if (picker.ShowDialog(FindForm()) != DialogResult.OK || picker.SelectedSeason == null) return;
+        new ProfitSummaryForm(picker.SelectedSeason).ShowDialog(FindForm());
     }
 }
 
@@ -269,7 +280,7 @@ internal class NewSeasonDialog : Form
             BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 10f)
         };
 
-        var lblInvest = AppColors.MakeLabel("Initial investment (£, optional — for pre-bought stock):", 9.5f, color: AppColors.TextSecond);
+        var lblInvest = AppColors.MakeLabel("Initial investment (optional):", 9.5f, color: AppColors.TextSecond);
         lblInvest.Location = new Point(20, 76);
         txtInvest = new TextBox
         {
@@ -279,10 +290,23 @@ internal class NewSeasonDialog : Form
             PlaceholderText = "0"
         };
 
+        var lblErr = new Label
+        {
+            Location = new Point(20, 126), AutoSize = true,
+            ForeColor = AppColors.RedFg, Font = new Font("Segoe UI", 8.5f),
+            BackColor = Color.Transparent
+        };
+
         var btnOk = AppColors.MakeBtn("Create", AppColors.Accent);
         btnOk.Width = 90; btnOk.Height = 32; btnOk.Location = new Point(230, 152);
         btnOk.Click += (_, _) =>
         {
+            if (string.IsNullOrWhiteSpace(txtName.Text))
+            {
+                lblErr.Text = "Season name is required.";
+                txtName.Focus();
+                return;
+            }
             InitialInvestment = double.TryParse(txtInvest.Text.Replace("£", "").Trim(), out double v) && v >= 0 ? v : 0;
             DialogResult = DialogResult.OK;
             Close();
@@ -292,7 +316,7 @@ internal class NewSeasonDialog : Form
         btnCancel.Width = 80; btnCancel.Height = 32; btnCancel.Location = new Point(138, 152);
         btnCancel.Click += (_, _) => { DialogResult = DialogResult.Cancel; Close(); };
 
-        Controls.AddRange(new Control[] { lblName, txtName, lblInvest, txtInvest, btnOk, btnCancel });
+        Controls.AddRange(new Control[] { lblName, txtName, lblInvest, txtInvest, lblErr, btnOk, btnCancel });
         AcceptButton = btnOk; CancelButton = btnCancel;
     }
 }

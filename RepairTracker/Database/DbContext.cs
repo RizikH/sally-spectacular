@@ -55,10 +55,71 @@ public static class DbContext
             catch { /* column already exists */ }
         }
 
+        // Migrate seasons: remove column-level UNIQUE; replace with partial index (active seasons only)
+        MigrateSeasonUniqueConstraint(conn);
+
         PurgeExpiredSeasons(conn);
 
         // Migrate hours_log: old schema had episode_id FK; new has (season_id, episode_number)
         MigrateHoursLog(conn);
+    }
+
+    private static void MigrateSeasonUniqueConstraint(SqliteConnection conn)
+    {
+        // Skip if the partial index already exists (migration already ran)
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_season_name_active'";
+            if ((long)cmd.ExecuteScalar()! > 0) return;
+        }
+
+        // Check if the seasons table still has a column-level UNIQUE on name
+        string tableSql;
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "SELECT sql FROM sqlite_master WHERE type='table' AND name='seasons'";
+            tableSql = cmd.ExecuteScalar() as string ?? "";
+        }
+
+        if (tableSql.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase))
+        {
+            // Disable FK enforcement so dropping the old table doesn't cascade-delete episodes/hours
+            using (var c = conn.CreateCommand()) { c.CommandText = "PRAGMA foreign_keys = OFF"; c.ExecuteNonQuery(); }
+            try
+            {
+                using (var c = conn.CreateCommand()) { c.CommandText = "DROP TABLE IF EXISTS seasons_new"; c.ExecuteNonQuery(); }
+                using (var c = conn.CreateCommand())
+                {
+                    c.CommandText = @"
+                        CREATE TABLE seasons_new (
+                            id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                            name               TEXT NOT NULL,
+                            initial_investment REAL NOT NULL DEFAULT 0,
+                            created_at         TEXT NOT NULL,
+                            deleted_at         TEXT
+                        )";
+                    c.ExecuteNonQuery();
+                }
+                using (var c = conn.CreateCommand())
+                {
+                    c.CommandText = "INSERT INTO seasons_new SELECT id, name, initial_investment, created_at, deleted_at FROM seasons";
+                    c.ExecuteNonQuery();
+                }
+                using (var c = conn.CreateCommand()) { c.CommandText = "DROP TABLE seasons"; c.ExecuteNonQuery(); }
+                using (var c = conn.CreateCommand()) { c.CommandText = "ALTER TABLE seasons_new RENAME TO seasons"; c.ExecuteNonQuery(); }
+            }
+            finally
+            {
+                using var c = conn.CreateCommand(); c.CommandText = "PRAGMA foreign_keys = ON"; c.ExecuteNonQuery();
+            }
+        }
+
+        // Partial unique index: only active (non-deleted) seasons must have unique names
+        using (var cmd = conn.CreateCommand())
+        {
+            cmd.CommandText = "CREATE UNIQUE INDEX IF NOT EXISTS idx_season_name_active ON seasons (name) WHERE deleted_at IS NULL";
+            cmd.ExecuteNonQuery();
+        }
     }
 
     private static void MigrateHoursLog(SqliteConnection conn)

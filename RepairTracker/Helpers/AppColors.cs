@@ -43,6 +43,7 @@ public static class AppColors
 
     public static void StyleGrid(DataGridView dgv)
     {
+        dgv.EditMode = DataGridViewEditMode.EditOnEnter;
         dgv.BackgroundColor = GridRow;
         dgv.GridColor = Border;
         dgv.BorderStyle = BorderStyle.None;

@@ -152,7 +152,23 @@ public class DeletedSeasonsForm : Form
         if (dgv.SelectedRows.Count == 0) return;
         if (dgv.SelectedRows[0].Tag is not Season season) return;
 
-        DbContext.RestoreSeason(season.Id);
-        LoadData();
+        var active = DbContext.GetAllSeasons();
+        if (active.Any(s => s.Name.Equals(season.Name, StringComparison.OrdinalIgnoreCase)))
+        {
+            MessageBox.Show(
+                $"Cannot restore \"{season.Name}\" — an active season with that name already exists.\n\nRename or delete the existing season first.",
+                "Cannot Restore", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+
+        try
+        {
+            DbContext.RestoreSeason(season.Id);
+            LoadData();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not restore season: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 }

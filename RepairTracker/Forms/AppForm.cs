@@ -25,14 +25,18 @@ public class AppForm : Form
     {
         var old = pnlContent.Controls.Count > 0 ? pnlContent.Controls[0] : null;
         pnlContent.Controls.Clear();
-        old?.Dispose();
-
         page.Dock = DockStyle.Fill;
         pnlContent.Controls.Add(page);
+
+        // Defer disposal so the caller's event handler finishes unwinding first.
+        // Disposing synchronously crashes because Navigate is called from within
+        // the old control's own button click, which is still on the call stack.
+        if (old != null) BeginInvoke(() => old.Dispose());
     }
 
     protected override void OnLoad(EventArgs e)
     {
+        RestoreWindowSize();
         base.OnLoad(e);
 
         string? lastId = DbContext.GetAppState("last_season_id");
@@ -48,5 +52,34 @@ public class AppForm : Form
         }
 
         Navigate(new MainMenuControl(this));
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        base.OnFormClosing(e);
+        if (WindowState == FormWindowState.Normal)
+        {
+            DbContext.SetAppState("window_width",  Width.ToString());
+            DbContext.SetAppState("window_height", Height.ToString());
+        }
+        DbContext.SetAppState("window_state", WindowState == FormWindowState.Maximized ? "Maximized" : "Normal");
+    }
+
+    private void RestoreWindowSize()
+    {
+        string? state = DbContext.GetAppState("window_state");
+        string? w     = DbContext.GetAppState("window_width");
+        string? h     = DbContext.GetAppState("window_height");
+
+        if (w != null && h != null
+            && int.TryParse(w, out int width) && int.TryParse(h, out int height))
+        {
+            Size = new Size(
+                Math.Max(width,  MinimumSize.Width),
+                Math.Max(height, MinimumSize.Height));
+        }
+
+        if (state == "Maximized")
+            WindowState = FormWindowState.Maximized;
     }
 }

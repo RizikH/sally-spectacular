@@ -43,7 +43,7 @@ public class ProfitSummaryForm : Form
         AddCol(dgv, "Episodes",        70, DataGridViewContentAlignment.MiddleCenter);
         AddCol(dgv, "Total Cost",      90, DataGridViewContentAlignment.MiddleRight);
         AddCol(dgv, "Total Parts",     90, DataGridViewContentAlignment.MiddleRight);
-        AddCol(dgv, "Total Postage",   95, DataGridViewContentAlignment.MiddleRight);
+        AddCol(dgv, "Postage",          95, DataGridViewContentAlignment.MiddleRight);
         AddCol(dgv, "Est. Profit",     95, DataGridViewContentAlignment.MiddleRight);
         AddCol(dgv, "Net Profit",      95, DataGridViewContentAlignment.MiddleRight);
 

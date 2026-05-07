@@ -318,17 +318,24 @@ public class SeasonViewControl : UserControl
     {
         int suggested = DbContext.GetNextEpisodeNumber(_season.Id);
         using var dlg = new AddEpisodeForm(_season.Id, suggested);
-        if (dlg.ShowDialog(this) != DialogResult.OK || dlg.CreatedEpisode == null) return;
+        if (dlg.ShowDialog(FindForm()) != DialogResult.OK || dlg.CreatedEpisode == null) return;
 
-        var ep = DbContext.CreateEpisode(dlg.CreatedEpisode);
-        _episodes.Add(ep);
-        dgv.Rows.Add();
-        RefreshRow(dgv.Rows.Count - 1);
-        UpdateSummary();
-        dgv.FirstDisplayedScrollingRowIndex = dgv.Rows.Count - 1;
+        try
+        {
+            var ep = DbContext.CreateEpisode(dlg.CreatedEpisode);
+            _episodes.Add(ep);
+            dgv.Rows.Add();
+            RefreshRow(dgv.Rows.Count - 1);
+            UpdateSummary();
+            dgv.FirstDisplayedScrollingRowIndex = dgv.Rows.Count - 1;
 
-        using var hoursForm = new LogHoursForm(_season.Id, ep.EpisodeNumber);
-        hoursForm.ShowDialog(this);
+            using var hoursForm = new LogHoursForm(_season.Id, ep.EpisodeNumber);
+            hoursForm.ShowDialog(FindForm());
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Could not add item: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
     }
 
     private void BtnHours_Click(object? sender, EventArgs e)

@@ -186,50 +186,58 @@ public class HoursViewControl : UserControl
         pnlSummary.Controls.Clear();
 
         var allEps = _grouped.Values.SelectMany(x => x).ToList();
-
-        double totalInvest = _season.InitialInvestment + allEps.Sum(e => e.Cost + e.Parts);
         double totalPostage = allEps.Sum(e => e.Postage);
 
         var withEst = allEps.Where(e => e.EstSellPrice.HasValue).ToList();
-        double? estTotal = withEst.Count > 0
+        double estTotal = (withEst.Count > 0
             ? withEst.Sum(e => Calculations.EstimatedProfit(e.Cost, e.Parts, e.EstSellPrice!.Value))
-            : null;
+            : 0.0) - _season.InitialInvestment;
 
         var withAct = allEps.Where(e => e.ActualSellPrice.HasValue).ToList();
-        double? actTotal = withAct.Count > 0
+        double actTotal = (withAct.Count > 0
             ? withAct.Sum(e => Calculations.NetProfit(e.Cost, e.Parts, e.ActualSellPrice!.Value, e.Postage))
-            : null;
+            : 0.0) - _season.InitialInvestment;
 
         double totalHours = _hoursMap.Values.Sum(h => h.HoursWorked);
-        double? hourlyTotal = (actTotal.HasValue && totalHours > 0)
-            ? Calculations.HourlyProfit(actTotal.Value, totalHours)
-            : null;
+        double? hourlyTotal = totalHours > 0 ? Calculations.HourlyProfit(actTotal, totalHours) : null;
 
-        var items = new[]
+        // (label, displayValue, color based on sign?, numeric value for color)
+        var items = new (string label, string value, bool colored, double numVal)[]
         {
-            ("Est. Total Profit",   Calculations.Gbp(estTotal)),
-            ("Actual Total Profit", Calculations.Gbp(actTotal)),
-            ("Total Hours",         totalHours > 0 ? $"{totalHours:F1} hrs" : "-"),
-            ("Total Hourly Profit", hourlyTotal.HasValue ? Calculations.Gbp(hourlyTotal.Value) + "/hr" : "-"),
-            ("Initial Investment",  Calculations.Gbp(totalInvest)),
-            ("Postage Total",       Calculations.Gbp(totalPostage)),
+            ("Est. Total Profit",   Calculations.Gbp(estTotal),  true,  estTotal),
+            ("Actual Total Profit", Calculations.Gbp(actTotal),  true,  actTotal),
+            ("Total Hours",         totalHours > 0 ? $"{totalHours:F1} hrs" : "-", false, 0),
+            ("Total Hourly Profit", hourlyTotal.HasValue ? Calculations.Gbp(hourlyTotal.Value) + "/hr" : "-", hourlyTotal.HasValue, hourlyTotal ?? 0),
+            ("Initial Investment",  Calculations.Gbp(_season.InitialInvestment), false, 0),
+            ("Postage Total",       Calculations.Gbp(totalPostage), false, 0),
         };
 
         int x = 0;
-        foreach (var (label, value) in items)
+        foreach (var (label, value, colored, numVal) in items)
         {
-            pnlSummary.Controls.Add(new Label
+            var lbl = new Label
             {
                 Text = $"{label}\n{value}",
                 AutoSize = false,
                 Width = 148,
                 Height = 56,
                 Location = new Point(x, 0),
-                ForeColor = AppColors.TextSecond,
                 Font = new Font("Segoe UI", 8.5f),
-                BackColor = Color.Transparent,
                 TextAlign = ContentAlignment.MiddleCenter
-            });
+            };
+
+            if (colored)
+            {
+                lbl.ForeColor = numVal >= 0 ? AppColors.GreenFg : AppColors.RedFg;
+                lbl.BackColor = numVal >= 0 ? AppColors.GreenBg : AppColors.RedBg;
+            }
+            else
+            {
+                lbl.ForeColor = AppColors.TextSecond;
+                lbl.BackColor = Color.Transparent;
+            }
+
+            pnlSummary.Controls.Add(lbl);
             x += 150;
         }
     }
