@@ -67,40 +67,48 @@ public class ProfitSummaryForm : Form
         var rows = DbContext.GetProfitSummary(_filterSeasonId);
         dgv.Rows.Clear();
 
-        double sumCost = 0, sumParts = 0, sumPost = 0;
-        double? sumEst = null, sumNet = null;
+        double sumCost = 0, sumParts = 0, sumPost = 0, sumInitialInv = 0;
+        double sumEst = 0, sumNet = 0;
         int totalEps = 0;
 
         foreach (var (s, cost, parts, post, est, net) in rows)
         {
+            double estAdj = (est ?? 0.0) - s.InitialInvestment;
+            double netAdj = (net ?? 0.0) - s.InitialInvestment;
+
             int i = dgv.Rows.Add(
                 s.Name,
                 s.EpisodeCount,
                 Calculations.Gbp(cost),
                 Calculations.Gbp(parts),
                 Calculations.Gbp(post),
-                Calculations.Gbp(est),
-                Calculations.Gbp(net));
+                Calculations.Gbp(estAdj),
+                Calculations.Gbp(netAdj));
 
-            dgv.Rows[i].Tag = (est, net);
+            dgv.Rows[i].Tag = ((double?)estAdj, (double?)netAdj);
 
-            sumCost += cost; sumParts += parts; sumPost += post; totalEps += s.EpisodeCount;
-            if (est.HasValue) sumEst = (sumEst ?? 0) + est.Value;
-            if (net.HasValue) sumNet = (sumNet ?? 0) + net.Value;
+            sumCost += cost; sumParts += parts; sumPost += post;
+            sumInitialInv += s.InitialInvestment;
+            sumEst += est ?? 0.0;
+            sumNet += net ?? 0.0;
+            totalEps += s.EpisodeCount;
         }
 
         if (rows.Count > 1)
         {
+            double totalEstAdj = sumEst - sumInitialInv;
+            double totalNetAdj = sumNet - sumInitialInv;
+
             int ti = dgv.Rows.Add(
                 "TOTAL",
                 totalEps,
                 Calculations.Gbp(sumCost),
                 Calculations.Gbp(sumParts),
                 Calculations.Gbp(sumPost),
-                Calculations.Gbp(sumEst),
-                Calculations.Gbp(sumNet));
+                Calculations.Gbp(totalEstAdj),
+                Calculations.Gbp(totalNetAdj));
 
-            dgv.Rows[ti].Tag = (sumEst, sumNet);
+            dgv.Rows[ti].Tag = ((double?)totalEstAdj, (double?)totalNetAdj);
             dgv.Rows[ti].DefaultCellStyle.Font = new Font("Segoe UI", 9f, FontStyle.Bold);
             dgv.Rows[ti].DefaultCellStyle.BackColor = AppColors.GridHeader;
         }

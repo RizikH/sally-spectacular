@@ -17,6 +17,8 @@ public class AppForm : Form
         ForeColor = AppColors.TextPrimary;
         Font = new Font("Segoe UI", 9f);
 
+        Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
+
         pnlContent = new Panel { Dock = DockStyle.Fill };
         Controls.Add(pnlContent);
     }
