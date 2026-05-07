@@ -44,14 +44,18 @@ public static class DbContext
             cmd.ExecuteNonQuery();
         }
 
-        // Migrate seasons: add initial_investment if missing
-        try
+        // Migrate seasons: add missing columns
+        foreach (var sql in new[]
         {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "ALTER TABLE seasons ADD COLUMN initial_investment REAL NOT NULL DEFAULT 0";
-            cmd.ExecuteNonQuery();
+            "ALTER TABLE seasons ADD COLUMN initial_investment REAL NOT NULL DEFAULT 0",
+            "ALTER TABLE seasons ADD COLUMN deleted_at TEXT"
+        })
+        {
+            try { using var c = conn.CreateCommand(); c.CommandText = sql; c.ExecuteNonQuery(); }
+            catch { /* column already exists */ }
         }
-        catch { /* column already exists */ }
+
+        PurgeExpiredSeasons(conn);
 
         // Migrate hours_log: old schema had episode_id FK; new has (season_id, episode_number)
         MigrateHoursLog(conn);
@@ -157,6 +161,7 @@ public static class DbContext
             SELECT s.id, s.name, s.initial_investment, s.created_at, COUNT(e.id) AS cnt
             FROM seasons s
             LEFT JOIN episodes e ON e.season_id = s.id
+            WHERE s.deleted_at IS NULL
             GROUP BY s.id
             ORDER BY s.id
         ";
@@ -172,6 +177,57 @@ public static class DbContext
                 EpisodeCount = r.GetInt32(4)
             });
         return list;
+    }
+
+    public static List<Season> GetDeletedSeasons()
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+            SELECT id, name, initial_investment, created_at, deleted_at
+            FROM seasons WHERE deleted_at IS NOT NULL
+            ORDER BY deleted_at DESC
+        ";
+        var list = new List<Season>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            list.Add(new Season
+            {
+                Id = r.GetInt32(0),
+                Name = r.GetString(1),
+                InitialInvestment = r.GetDouble(2),
+                CreatedAt = r.GetString(3),
+                DeletedAt = r.GetString(4)
+            });
+        return list;
+    }
+
+    public static void SoftDeleteSeason(int id)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE seasons SET deleted_at = $now WHERE id = $id";
+        cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("o"));
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
+    }
+
+    public static void RestoreSeason(int id)
+    {
+        using var conn = Connect();
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "UPDATE seasons SET deleted_at = NULL WHERE id = $id";
+        cmd.Parameters.AddWithValue("$id", id);
+        cmd.ExecuteNonQuery();
+    }
+
+    private static void PurgeExpiredSeasons(SqliteConnection conn)
+    {
+        string cutoff = DateTime.UtcNow.AddDays(-30).ToString("o");
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = "DELETE FROM seasons WHERE deleted_at IS NOT NULL AND deleted_at < $cutoff";
+        cmd.Parameters.AddWithValue("$cutoff", cutoff);
+        cmd.ExecuteNonQuery();
     }
 
     public static Season CreateSeason(string name, double initialInvestment = 0)

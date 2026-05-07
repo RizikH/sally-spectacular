@@ -7,6 +7,7 @@ namespace RepairTracker.Forms;
 public class MainMenuForm : Form
 {
     private FlowLayoutPanel pnlCards = null!;
+    private Button btnDeleted = null!;
 
     public MainMenuForm()
     {
@@ -51,13 +52,26 @@ public class MainMenuForm : Form
         btnSeasonProfit.Anchor = AnchorStyles.Top | AnchorStyles.Right;
         btnSeasonProfit.Click += BtnSeasonProfit_Click;
 
-        pnlBar.SizeChanged += (_, _) =>
+        btnDeleted = AppColors.MakeBtn("🗑 Recently Deleted", AppColors.Card);
+        btnDeleted.Width = 155; btnDeleted.Height = 34;
+        btnDeleted.FlatAppearance.BorderSize = 1;
+        btnDeleted.FlatAppearance.BorderColor = AppColors.Border;
+        btnDeleted.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+        btnDeleted.Click += (_, _) =>
         {
-            btnSeasonProfit.Location = new Point(pnlBar.Width - 144, 9);
-            btnAllProfit.Location = new Point(pnlBar.Width - 338, 9);
+            using var dlg = new DeletedSeasonsForm();
+            dlg.ShowDialog(this);
+            LoadSeasons();
         };
 
-        pnlBar.Controls.AddRange(new Control[] { btnNew, btnAllProfit, btnSeasonProfit });
+        pnlBar.SizeChanged += (_, _) =>
+        {
+            btnDeleted.Location      = new Point(pnlBar.Width - 169, 9);
+            btnSeasonProfit.Location = new Point(pnlBar.Width - 313, 9);
+            btnAllProfit.Location    = new Point(pnlBar.Width - 507, 9);
+        };
+
+        pnlBar.Controls.AddRange(new Control[] { btnNew, btnAllProfit, btnSeasonProfit, btnDeleted });
 
         // Cards scroll area
         pnlCards = new FlowLayoutPanel
@@ -109,6 +123,12 @@ public class MainMenuForm : Form
         pnlCards.Controls.Clear();
         var seasons = DbContext.GetAllSeasons();
 
+        // Update "Recently Deleted" badge
+        int deletedCount = DbContext.GetDeletedSeasons().Count;
+        btnDeleted.Text = deletedCount > 0
+            ? $"🗑 Recently Deleted ({deletedCount})"
+            : "🗑 Recently Deleted";
+
         if (seasons.Count == 0)
         {
             var lbl = AppColors.MakeLabel("No seasons yet. Click \"+ New Season\" to get started.", 10f, color: AppColors.TextMuted);
@@ -153,6 +173,25 @@ public class MainMenuForm : Form
         btnHours.FlatAppearance.BorderColor = AppColors.Border;
         btnHours.Click += (_, _) => OpenHours(season);
 
+        // Delete button — top-right corner
+        var btnDelete = new Button
+        {
+            Text = "×",
+            Size = new Size(24, 24),
+            Location = new Point(card.Width - 28, 4),
+            FlatStyle = FlatStyle.Flat,
+            BackColor = Color.Transparent,
+            ForeColor = AppColors.TextMuted,
+            Font = new Font("Segoe UI", 11f, FontStyle.Bold),
+            Cursor = Cursors.Hand,
+            TabStop = false
+        };
+        btnDelete.FlatAppearance.BorderSize = 0;
+        btnDelete.FlatAppearance.MouseOverBackColor = AppColors.RedBg;
+        btnDelete.MouseEnter += (_, _) => btnDelete.ForeColor = AppColors.RedFg;
+        btnDelete.MouseLeave += (_, _) => btnDelete.ForeColor = AppColors.TextMuted;
+        btnDelete.Click += (_, _) => DeleteSeason(season);
+
         // Border
         card.Paint += (s, e) =>
         {
@@ -160,11 +199,11 @@ public class MainMenuForm : Form
             e.Graphics.DrawRectangle(pen, 0, 0, card.Width - 1, card.Height - 1);
         };
 
-        // Hover
+        // Hover (don't override if hovering the delete button)
         card.MouseEnter += (_, _) => { card.BackColor = AppColors.CardHover; card.Invalidate(); };
         card.MouseLeave += (_, _) => { card.BackColor = AppColors.Card; card.Invalidate(); };
 
-        card.Controls.AddRange(new Control[] { lblName, lblCount, btnView, btnHours });
+        card.Controls.AddRange(new Control[] { lblName, lblCount, btnView, btnHours, btnDelete });
         return card;
     }
 
@@ -184,6 +223,21 @@ public class MainMenuForm : Form
         form.FormClosed += (_, _) => RefreshAndShow();
         Hide();
         form.Show();
+    }
+
+    private void DeleteSeason(Season season)
+    {
+        var result = MessageBox.Show(
+            $"Delete \"{season.Name}\"?\n\nYou can restore it within 30 days from \"Recently Deleted\".",
+            "Delete Season",
+            MessageBoxButtons.YesNo,
+            MessageBoxIcon.Warning,
+            MessageBoxDefaultButton.Button2);
+
+        if (result != DialogResult.Yes) return;
+
+        DbContext.SoftDeleteSeason(season.Id);
+        LoadSeasons();
     }
 
     private void BtnNew_Click(object? sender, EventArgs e)
