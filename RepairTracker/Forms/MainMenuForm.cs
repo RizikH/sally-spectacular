@@ -190,13 +190,13 @@ public class MainMenuControl : UserControl
     private void OpenSeason(Season season)
     {
         DbContext.SetAppState("last_season_id", season.Id.ToString());
-        _app.Navigate(new SeasonViewControl(_app, season));
+        _app.Navigate(new SeasonViewControl(_app, season), () => new SeasonViewControl(_app, season));
     }
 
     private void OpenHours(Season season)
     {
         DbContext.SetAppState("last_season_id", season.Id.ToString());
-        _app.Navigate(new HoursViewControl(_app, season));
+        _app.Navigate(new HoursViewControl(_app, season), () => new HoursViewControl(_app, season));
     }
 
     private void DeleteSeason(Season season)

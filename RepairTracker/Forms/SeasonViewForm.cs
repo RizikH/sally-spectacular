@@ -81,7 +81,7 @@ public class SeasonViewControl : UserControl
         AddTextCol("Item",          185, true,  DataGridViewContentAlignment.MiddleLeft);
         AddTextCol("Cost",           75, true,  DataGridViewContentAlignment.MiddleRight);
         AddTextCol("Parts",          75, true,  DataGridViewContentAlignment.MiddleRight);
-        AddTextCol("eBay Fee (9%)",  90, false, DataGridViewContentAlignment.MiddleRight);
+        AddTextCol("eBay Fee (9%)", 115, false, DataGridViewContentAlignment.MiddleRight);
         AddTextCol("Est. Sell",      90, true,  DataGridViewContentAlignment.MiddleRight);
         AddTextCol("Est. Profit",    95, false, DataGridViewContentAlignment.MiddleRight);
         AddTextCol("Actual Sell",    95, true,  DataGridViewContentAlignment.MiddleRight);
@@ -192,14 +192,14 @@ public class SeasonViewControl : UserControl
         {
             style.BackColor = AppColors.RedBg;
             style.ForeColor = AppColors.RedFg;
-            style.SelectionBackColor = Color.FromArgb(130, 40, 40);
+            style.SelectionBackColor = AppColors.RedSel;
             style.SelectionForeColor = AppColors.RedFg;
         }
         else
         {
             style.BackColor = AppColors.GreenBg;
             style.ForeColor = AppColors.GreenFg;
-            style.SelectionBackColor = Color.FromArgb(30, 100, 50);
+            style.SelectionBackColor = AppColors.GreenSel;
             style.SelectionForeColor = AppColors.GreenFg;
         }
     }
@@ -311,7 +311,7 @@ public class SeasonViewControl : UserControl
 
     private void BtnBack_Click(object? sender, EventArgs e)
     {
-        _app.Navigate(new MainMenuControl(_app));
+        _app.Navigate(new MainMenuControl(_app), () => new MainMenuControl(_app));
     }
 
     private void BtnAdd_Click(object? sender, EventArgs e)
@@ -341,6 +341,6 @@ public class SeasonViewControl : UserControl
     private void BtnHours_Click(object? sender, EventArgs e)
     {
         DbContext.SetAppState("last_season_id", _season.Id.ToString());
-        _app.Navigate(new HoursViewControl(_app, _season));
+        _app.Navigate(new HoursViewControl(_app, _season), () => new HoursViewControl(_app, _season));
     }
 }

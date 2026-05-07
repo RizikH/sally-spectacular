@@ -39,7 +39,7 @@ public class HoursViewControl : UserControl
         var pnlHeader = new Panel { Dock = DockStyle.Top, Height = 58, BackColor = AppColors.Surface };
         var btnBack = AppColors.MakeBtn("← Season", AppColors.Card);
         btnBack.Width = 100; btnBack.Height = 34; btnBack.Location = new Point(10, 12);
-        btnBack.Click += (_, _) => _app.Navigate(new SeasonViewControl(_app, _season));
+        btnBack.Click += (_, _) => _app.Navigate(new SeasonViewControl(_app, _season), () => new SeasonViewControl(_app, _season));
         var lblTitle = AppColors.MakeLabel($"{_season.Name} — Hours Log", 13f, bold: true);
         lblTitle.Location = new Point(122, 18);
         pnlHeader.Controls.AddRange(new Control[] { btnBack, lblTitle });
@@ -169,14 +169,14 @@ public class HoursViewControl : UserControl
         {
             style.BackColor = AppColors.RedBg;
             style.ForeColor = AppColors.RedFg;
-            style.SelectionBackColor = Color.FromArgb(130, 40, 40);
+            style.SelectionBackColor = AppColors.RedSel;
             style.SelectionForeColor = AppColors.RedFg;
         }
         else
         {
             style.BackColor = AppColors.GreenBg;
             style.ForeColor = AppColors.GreenFg;
-            style.SelectionBackColor = Color.FromArgb(30, 100, 50);
+            style.SelectionBackColor = AppColors.GreenSel;
             style.SelectionForeColor = AppColors.GreenFg;
         }
     }
